@@ -9,12 +9,21 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@langchain/community": "^1.1.29",
+    "@langchain/core": "^1.3.1",
+    "@langchain/qdrant": "^1.0.3",
+    "@qdrant/js-client-rest": "^1.20.0",
+    "langchain": "^1.6.0",
+    "multer": "^2.5.0",
     "next": "16.4.3",
+    "openai": "^7.45.1",
+    "pdf-parse": "^2.4.5",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
+    "@types/multer": "^2.3.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
