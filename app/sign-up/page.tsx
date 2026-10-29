@@ -8,7 +8,7 @@ export const metadata = {
 export default function SignUpPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-black p-4">
-      <SignUpCard callbackURL="/" />
+      <SignUpCard callbackURL="/dash" />
     </div>
   );
 }

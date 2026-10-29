@@ -3,51 +3,50 @@ import path from "node:path";
 import fs from "node:fs";
 import { writeFile, mkdir } from "node:fs/promises";
 
-// Default upload directory (relative to project root)
-export const UPLOAD_DIR = path.resolve(process.cwd(), "uploads");
+// Assets temporary upload directory (relative to project root)
+export const TEMP_DIR = path.resolve(process.cwd(), "assets", "temp");
 
-// Ensure upload directory exists
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+// Ensure assets/temp directory exists
+if (!fs.existsSync(TEMP_DIR)) {
+  fs.mkdirSync(TEMP_DIR, { recursive: true });
+}
+
+export function formatUniqueFilename(originalName: string, userId?: string): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const dateStr = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(
+    now.getHours()
+  )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+
+  const userSuffix = userId && userId.length >= 5 ? userId.slice(-5) : userId || "guest";
+  const sanitizedOriginalName = originalName.replace(/[^a-zA-Z0-9.-]/g, "_");
+
+  return `${dateStr}-${userSuffix}-${sanitizedOriginalName}`;
 }
 
 /**
  * Disk storage engine for Multer
- * Stores uploaded files with unique timestamps and sanitized original names
+ * Stores uploaded files in assets/temp with date-time-userId suffix
  */
 export const diskStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    cb(null, UPLOAD_DIR);
+    cb(null, TEMP_DIR);
   },
-  filename: (_req, file, cb) => {
-    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    const sanitizedOriginalName = file.originalname.replace(/[^a-zA-Z0-9.-]/g, "_");
-    cb(null, `${uniqueSuffix}-${sanitizedOriginalName}`);
+  filename: (req: any, file, cb) => {
+    const userId = req?.user?.id || req?.userId;
+    cb(null, formatUniqueFilename(file.originalname, userId));
   },
 });
 
 /**
  * Memory storage engine for Multer
- * Holds files as Buffers in memory
  */
 export const memoryStorage = multer.memoryStorage();
 
-/**
- * Pre-configured Multer instances
- * - upload: saves files to disk in `uploads/`
- * - uploadMemory: retains files in memory
- */
 export const upload = multer({
   storage: diskStorage,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB limit for lectures, audio, and large PDFs
-  },
-});
-
-export const uploadMemory = multer({
-  storage: memoryStorage,
-  limits: {
-    fileSize: 100 * 1024 * 1024,
+    fileSize: 500 * 1024 * 1024, // 500MB limit for lectures, audio, and large PDFs
   },
 });
 
@@ -61,17 +60,16 @@ export interface UploadedFileMetadata {
 
 /**
  * Helper for Next.js App Router (which uses Web standard Request / FormData)
- * Takes a Web File from request.formData() and saves it to disk (compatible with lectureToText)
+ * Takes a Web File from request.formData() and saves it to assets/temp/
  */
 export async function saveFileToDisk(
   file: File,
-  targetDir: string = UPLOAD_DIR
+  userId?: string,
+  targetDir: string = TEMP_DIR
 ): Promise<UploadedFileMetadata> {
   await mkdir(targetDir, { recursive: true });
 
-  const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-  const sanitizedOriginalName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-  const filename = `${uniqueSuffix}-${sanitizedOriginalName}`;
+  const filename = formatUniqueFilename(file.name, userId);
   const filepath = path.join(targetDir, filename);
 
   const arrayBuffer = await file.arrayBuffer();

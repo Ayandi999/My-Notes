@@ -67,8 +67,11 @@ export const syncStatusEnum = pgEnum("sync_status", [
 export const files = pgTable("files", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
+  name: text("name").notNull(), // Main display name (real user name)
+  realName: text("real_name"),  // Original name provided by user
+  givenName: text("given_name"), // Unique generated filename on disk
   url: text("url").notNull(),
+  localPath: text("local_path"),
   cloudinaryPublicId: text("cloudinary_public_id"),
   mimeType: text("mime_type"),
   size: text("size"),

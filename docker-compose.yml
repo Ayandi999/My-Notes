@@ -9,5 +9,12 @@ services:
       - qdrant_storage:/qdrant/storage
     restart: unless-stopped
 
+  redis:
+    image: redis:alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
 volumes:
   qdrant_storage:

@@ -58,10 +58,12 @@ export function getQdrantClient(options?: {
   const rawApiKey = options?.apiKey ?? process.env.QDRANT_API_KEY;
   const apiKey = rawApiKey && rawApiKey.trim().length > 0 ? rawApiKey.trim() : undefined;
 
-  return new QdrantClient({
-    url,
-    apiKey,
-  });
+  const clientOptions: { url: string; apiKey?: string } = { url };
+  if (apiKey) {
+    clientOptions.apiKey = apiKey;
+  }
+
+  return new QdrantClient(clientOptions);
 }
 
 /**
@@ -146,5 +148,80 @@ export async function initQdrantDb(
   return result as InitQdrantDbResponse;
 }
 
+/**
+ * Deletes all points / vectors from Qdrant associated with a specific fileId or source path.
+ *
+ * @param fileId Unique ID of the file from Postgres
+ * @param options Optional configuration overrides (collectionName, url, apiKey, localPath)
+ * @returns boolean indicating whether the delete filter operation completed
+ */
+export async function deleteFromQdrantByFileId(
+  fileId: string,
+  options?: {
+    collectionName?: string;
+    url?: string;
+    apiKey?: string;
+    localPath?: string;
+  }
+): Promise<{ success: boolean }> {
+  const collectionName =
+    options?.collectionName ||
+    process.env.QDRANT_COLLECTION_NAME ||
+    "memory";
+
+  const client = getQdrantClient({
+    url: options?.url,
+    apiKey: options?.apiKey,
+  });
+
+  const exists = await checkQdrantDbExists({
+    collectionName,
+    client,
+  });
+
+  if (!exists) {
+    return { success: true };
+  }
+
+  try {
+    // Delete points matching metadata.fileId, or top-level fileId, or metadata.source
+    const shouldConditions: any[] = [
+      {
+        key: "metadata.fileId",
+        match: { value: fileId },
+      },
+      {
+        key: "fileId",
+        match: { value: fileId },
+      },
+    ];
+
+    if (options?.localPath) {
+      shouldConditions.push(
+        {
+          key: "metadata.source",
+          match: { value: options.localPath },
+        },
+        {
+          key: "source",
+          match: { value: options.localPath },
+        }
+      );
+    }
+
+    await client.delete(collectionName, {
+      filter: {
+        should: shouldConditions,
+      },
+    });
+
+    return { success: true };
+  } catch (err: any) {
+    console.warn(`[Qdrant] Could not delete vectors for fileId ${fileId}:`, err?.message || err);
+    return { success: false };
+  }
+}
+
 export { initQdrantDb as initQdrantMemory };
+export { deleteFromQdrantByFileId as deleteFileVectorsFromQdrant };
 export default initQdrantDb;

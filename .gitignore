@@ -25,6 +25,7 @@
 .DS_Store
 *.pem
 /uploads
+/assets/temp
 
 # debug
 npm-debug.log*

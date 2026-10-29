@@ -1,16 +1,26 @@
 "use client";
 
-import { useState } from "react";
-import { signIn } from "@/lib/auth-client";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { signIn, useSession } from "@/lib/auth-client";
 import { Loader2 } from "lucide-react";
 
 export function SignInCard({
-  callbackURL = "/",
+  callbackURL = "/dash",
 }: {
   callbackURL?: string;
 }) {
+  const router = useRouter();
+  const { data: session } = useSession();
   const [socialLoading, setSocialLoading] = useState<"google" | "github" | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // If already logged in, redirect straight to dashboard
+  useEffect(() => {
+    if (session?.user) {
+      router.replace(callbackURL);
+    }
+  }, [session, router, callbackURL]);
 
   const handleSocialSignIn = async (provider: "google" | "github") => {
     setError(null);

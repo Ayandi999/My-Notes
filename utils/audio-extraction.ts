@@ -1,4 +1,5 @@
 import { stat, mkdtemp, readdir, rm, readFile, mkdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { tmpdir } from "node:os";
@@ -211,11 +212,44 @@ export function extractCuesAndTextFromSarvamJson(
 }
 
 function getFfmpegBinary(): string {
-  return ffmpegPath || "ffmpeg";
+  let p = (ffmpegPath as string) || "ffmpeg";
+  if (p && (p.includes("\\ROOT\\") || p.includes("/ROOT/"))) {
+    p = p.replace(/^.*[\\/]ROOT[\\/]/, "");
+    p = path.join(/*turbopackIgnore: true*/ process.cwd(), p);
+  }
+  if (!p || !existsSync(/*turbopackIgnore: true*/ p)) {
+    const candidate = path.join(
+      /*turbopackIgnore: true*/
+      process.cwd(),
+      "node_modules",
+      "ffmpeg-static",
+      process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg"
+    );
+    if (existsSync(/*turbopackIgnore: true*/ candidate)) return candidate;
+  }
+  return p;
 }
 
 function getFfprobeBinary(): string {
-  return ffprobeStatic.path || "ffprobe";
+  let p = (ffprobeStatic.path as string) || "ffprobe";
+  if (p && (p.includes("\\ROOT\\") || p.includes("/ROOT/"))) {
+    p = p.replace(/^.*[\\/]ROOT[\\/]/, "");
+    p = path.join(/*turbopackIgnore: true*/ process.cwd(), p);
+  }
+  if (!p || !existsSync(/*turbopackIgnore: true*/ p)) {
+    const candidate = path.join(
+      /*turbopackIgnore: true*/
+      process.cwd(),
+      "node_modules",
+      "ffprobe-static",
+      "bin",
+      process.platform,
+      process.arch,
+      process.platform === "win32" ? "ffprobe.exe" : "ffprobe"
+    );
+    if (existsSync(/*turbopackIgnore: true*/ candidate)) return candidate;
+  }
+  return p;
 }
 
 export async function run(cmd: "ffmpeg" | "ffprobe" | string, args: string[]) {

@@ -48,9 +48,24 @@ import { checkQdrantDbExists, initQdrantDb } from "./init-qdrant-db";
 
 export interface StoreAudioOptions {
   /**
+   * Unique file ID in Postgres to link vectors for search and deletion.
+   */
+  fileId?: string;
+
+  /**
+   * User ID who owns the file.
+   */
+  userId?: string;
+
+  /**
    * Target Qdrant collection name. Defaults to process.env.QDRANT_COLLECTION_NAME or "memory".
    */
   collectionName?: string;
+
+  /**
+   * OpenAI or compatible embedding model. Defaults to process.env.OPENAI_EMBEDDING_MODEL or "text-embedding-3-small".
+   */
+  embeddingModel?: string;
 
   /**
    * Qdrant server URL. Defaults to process.env.QDRANT_URL or "http://localhost:6333".
@@ -265,6 +280,14 @@ export async function storeAudio(
     ];
   }
 
+  // Attach fileId and userId to chunk metadata for targeted search & deletion
+  if (options?.fileId || options?.userId) {
+    for (const doc of splitDocs) {
+      if (options.fileId) doc.metadata.fileId = options.fileId;
+      if (options.userId) doc.metadata.userId = options.userId;
+    }
+  }
+
   // 4. Qdrant connection configuration
   const qdrantUrl =
     options?.qdrantUrl || process.env.QDRANT_URL || "http://localhost:6333";
@@ -293,7 +316,14 @@ export async function storeAudio(
   }
 
   // 6. Embeddings using OpenAIEmbeddings
+  const embeddingModel =
+    options?.embeddingModel ||
+    process.env.OPENAI_EMBEDDING_MODEL ||
+    process.env.EMBEDDING_MODEL ||
+    "text-embedding-3-small";
+
   const embeddings = new OpenAIEmbeddings({
+    model: embeddingModel,
     apiKey: process.env.OPENAI_API_KEY || undefined,
     configuration: {
       baseURL: process.env.OPENAI_BASE_URL || undefined,
@@ -301,11 +331,19 @@ export async function storeAudio(
   });
 
   // 7. Store documents into Qdrant vector database
-  const store = await QdrantVectorStore.fromDocuments(splitDocs, embeddings, {
+  const qdrantStoreOptions: {
+    url: string;
+    collectionName: string;
+    apiKey?: string;
+  } = {
     url: qdrantUrl,
-    apiKey: qdrantApiKey,
     collectionName: collectionName,
-  });
+  };
+  if (qdrantApiKey) {
+    qdrantStoreOptions.apiKey = qdrantApiKey;
+  }
+
+  const store = await QdrantVectorStore.fromDocuments(splitDocs, embeddings, qdrantStoreOptions);
 
   return {
     store,

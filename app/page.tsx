@@ -65,16 +65,10 @@ export default function Home() {
 
         <div className="mt-10 flex flex-wrap gap-3 justify-center">
           <Link
-            href="/sign-in"
+            href="/dash"
             className="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm transition shadow-sm"
           >
-            Get Started Free
-          </Link>
-          <Link
-            href="/sign-up"
-            className="px-6 py-3 rounded-xl border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 font-medium text-sm transition"
-          >
-            Create Account
+            Go to Dashboard
           </Link>
         </div>
       </main>
