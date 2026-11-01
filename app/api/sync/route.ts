@@ -7,6 +7,10 @@ import { files } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { processPdf } from "@/utils/text-extraction";
 import { storeAudio } from "@/utils/store-audio";
+import {
+  parseYouTubeVideoId,
+  storeYoutubeTranscript,
+} from "@/utils/yt-transcript-extraction";
 
 export async function POST(request: Request) {
   try {
@@ -45,6 +49,55 @@ export async function POST(request: Request) {
     }
 
     const localPath = fileRecord.localPath;
+
+    const isYouTube =
+      fileRecord.mimeType === "video/youtube" ||
+      (!!fileRecord.url && /youtube\.com|youtu\.be/.test(fileRecord.url));
+
+    // YouTube link-only resources have no local file/chunks on disk — process
+    // the transcript straight from the stored video URL instead.
+    if (isYouTube) {
+      try {
+        // 2. Set status to 'syncing'
+        await db
+          .update(files)
+          .set({ syncStatus: "syncing", updatedAt: new Date() })
+          .where(eq(files.id, fileId));
+
+        // 3. Parse + normalize the link (handles watch/shorts/youtu.be shapes)
+        const videoUrl = `https://www.youtube.com/watch?v=${parseYouTubeVideoId(fileRecord.url)}`;
+
+        // 4. Fetch transcript + embed into Qdrant (same chunk format as audio)
+        await storeYoutubeTranscript(videoUrl, {
+          fileId: fileRecord.id,
+          userId: fileRecord.userId || session.user.id,
+          collectionName: process.env.QDRANT_COLLECTION_NAME || "memory",
+        });
+
+        // 5. Mark as 'synced'
+        const [syncedRecord] = await db
+          .update(files)
+          .set({ syncStatus: "synced", updatedAt: new Date() })
+          .where(eq(files.id, fileId))
+          .returning();
+
+        return NextResponse.json({ success: true, file: syncedRecord });
+      } catch (ytErr: any) {
+        console.error("YouTube transcript sync failed:", ytErr);
+        await db
+          .update(files)
+          .set({ syncStatus: "not synced", updatedAt: new Date() })
+          .where(eq(files.id, fileId));
+        return NextResponse.json(
+          {
+            success: false,
+            error: ytErr?.message || "YouTube transcript sync failed",
+            file: fileRecord,
+          },
+          { status: 500 }
+        );
+      }
+    }
 
     if (!localPath || !fs.existsSync(localPath)) {
       return NextResponse.json(

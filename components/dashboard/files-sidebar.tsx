@@ -18,6 +18,11 @@ import {
   X,
 } from "lucide-react";
 import { UploadModal } from "./upload-modal";
+import {
+  isYouTubeSource,
+  parseYouTubeVideoIdFromUrl,
+  youtubeThumbnailUrl,
+} from "@/functions/youtube";
 
 interface FilesSidebarProps {
   initialFiles: FileRecord[];
@@ -59,6 +64,7 @@ export function FilesSidebar({ initialFiles }: FilesSidebarProps) {
   const [uploadStatus, setUploadStatus] = useState<{
     status: "idle" | "uploading" | "success" | "error";
     fileName: string;
+    message?: string;
     errorMessage?: string;
   }>({ status: "idle", fileName: "" });
 
@@ -110,6 +116,65 @@ export function FilesSidebar({ initialFiles }: FilesSidebarProps) {
         status: "error",
         fileName: file.name,
         errorMessage: err?.message || "Failed to upload file",
+      });
+    }
+  };
+
+  const handleYoutubeUpload = async (urls: string[]) => {
+    const count = urls.length;
+    setUploadStatus({
+      status: "uploading",
+      fileName: count === 1 ? "YouTube video" : `${count} YouTube videos`,
+      message: "Adding video source...",
+    });
+
+    try {
+      const res = await fetch("/api/upload/youtube", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ urls }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to add YouTube videos");
+      }
+
+      const records: FileRecord[] = data.records || [];
+      if (records.length > 0) {
+        // Show every video as an added placeholder card in the sidebar
+        setFilesList((prev) => [...records, ...prev]);
+        setSelectedFileId(records[0].id);
+      }
+
+      setUploadStatus({
+        status: "success",
+        fileName:
+          records[0]?.realName ||
+          records[0]?.name ||
+          (records.length === 1 ? "YouTube video" : `${records.length} YouTube videos`),
+        message:
+          records.length === 1
+            ? "Video added!"
+            : `${records.length} video${records.length === 1 ? "" : "s"} added!${
+                data.failedCount > 0 ? ` (${data.failedCount} skipped)` : ""
+              }`,
+      });
+
+      // Automatically hide success notification after 3.5 seconds
+      setTimeout(() => {
+        setUploadStatus((current) =>
+          current.status === "success"
+            ? { status: "idle", fileName: "" }
+            : current
+        );
+      }, 3500);
+    } catch (err: any) {
+      setUploadStatus({
+        status: "error",
+        fileName: count === 1 ? "YouTube video" : `${count} YouTube videos`,
+        errorMessage: err?.message || "Failed to add YouTube videos",
       });
     }
   };
@@ -270,13 +335,18 @@ export function FilesSidebar({ initialFiles }: FilesSidebarProps) {
                 No files added yet
               </p>
               <p className="text-xs text-zinc-500 mt-1 max-w-[200px]">
-                Click here or &quot;Add&quot; to upload lecture audio, videos, or PDF notes.
+                Click here or &quot;Add&quot; to add YouTube links, upload lecture
+                audio, videos, or PDF notes.
               </p>
             </div>
           ) : (
             filesList.map((file) => {
               const isSelected = selectedFileId === file.id;
               const isSyncing = syncingFileIds.has(file.id);
+              const isYouTube = isYouTubeSource(file);
+              const ytVideoId = isYouTube
+                ? parseYouTubeVideoIdFromUrl(file.url)
+                : null;
 
               return (
                 <div
@@ -288,10 +358,29 @@ export function FilesSidebar({ initialFiles }: FilesSidebarProps) {
                       : "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800/80 hover:border-zinc-300 dark:hover:border-zinc-700"
                   }`}
                 >
-                  <div className="flex items-start gap-2.5">
-                    <div className="mt-0.5 p-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800/80">
-                      {getFileIcon(file.mimeType, file.realName || file.name)}
+                  {isYouTube && ytVideoId ? (
+                    /* YouTube video placeholder: live thumbnail straight from ytimg */
+                    <div className="relative rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-700/80">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={youtubeThumbnailUrl(ytVideoId)}
+                        alt={file.realName || file.name}
+                        loading="lazy"
+                        className="w-full h-auto aspect-video object-cover"
+                      />
+                      <span className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded-md bg-black/70 text-white text-[9px] font-semibold uppercase tracking-wide flex items-center gap-1 pointer-events-none">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                        YouTube
+                      </span>
                     </div>
+                  ) : null}
+
+                  <div className="flex items-start gap-2.5">
+                    {!isYouTube && (
+                      <div className="mt-0.5 p-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800/80">
+                        {getFileIcon(file.mimeType, file.realName || file.name)}
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition">
                         {file.realName || file.name}
@@ -374,6 +463,7 @@ export function FilesSidebar({ initialFiles }: FilesSidebarProps) {
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onStartUpload={handleStartUpload}
+        onStartYoutubeUpload={handleYoutubeUpload}
         onFileUploaded={handleFileUploaded}
       />
 
@@ -410,8 +500,10 @@ export function FilesSidebar({ initialFiles }: FilesSidebarProps) {
 
             <div className="min-w-0 flex-1">
               <p className="text-xs font-semibold truncate">
-                {uploadStatus.status === "uploading" && "Uploading document..."}
-                {uploadStatus.status === "success" && "Upload complete!"}
+                {uploadStatus.status === "uploading" &&
+                  (uploadStatus.message || "Uploading document...")}
+                {uploadStatus.status === "success" &&
+                  (uploadStatus.message || "Upload complete!")}
                 {uploadStatus.status === "error" && "Upload failed"}
               </p>
               <p className="text-[11px] opacity-75 truncate">
